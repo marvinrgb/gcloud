@@ -3,16 +3,33 @@ name: Docker Image CI
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
 
 jobs:
-
   build:
-
     runs-on: ubuntu-latest
+    # Required for GitHub Container Registry
+    permissions:
+      contents: read
+      packages: write
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Build the Docker image
-      run: docker build ./video-combiner --file video-combiner/Dockerfile --tag video-combiner:$(date +%s)
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    # 1. Log in to GitHub Container Registry
+    - name: Log in to the Container registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    # 2. Build and Push the image
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./video-combiner
+        file: video-combiner/Dockerfile
+        push: true
+        # Tag the image with the GitHub username and repo name
+        tags: ghcr.io/${{ github.repository_owner }}/video-combiner:latest
