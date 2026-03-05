@@ -7,4 +7,4 @@ gcloud run deploy riot-proxy   --source ./riot   --port 8080   --allow-unauthent
 
 
 netcup server
-root:h5lvMTF44u0blq7
+root:x
