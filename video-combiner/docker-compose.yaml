@@ -1,0 +1,7 @@
+services:
+  video-combiner:
+    image: ghcr.io/marvinrgb/video-combiner:latest
+    container_name: video-combiner
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
