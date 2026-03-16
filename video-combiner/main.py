@@ -5,6 +5,7 @@ import shutil
 import zipfile
 import logging
 import sys
+import subprocess
 from typing import Optional
 
 import numpy as np
@@ -17,6 +18,7 @@ from moviepy.editor import (
     VideoClip, concatenate_videoclips, AudioFileClip, TextClip
 )
 from moviepy.audio.fx.all import audio_loop
+from moviepy.config import get_setting # Used to grab MoviePy's internal FFmpeg binary
 
 # Configure Logging
 logging.basicConfig(
@@ -197,7 +199,8 @@ async def generate_video(
     subtitles: str = Form(None),  
     filename: str = Form(...),
     target_width: int = Form(720),
-    target_height: int = Form(1280)
+    target_height: int = Form(1280),
+    audio_bandpass: bool = Form(False) # <-- NEW PARAMETER
 ):
     logger.info("=== NEW REQUEST RECEIVED ===")
     logger.info(f"Target Filename: {filename}")
@@ -217,7 +220,7 @@ async def generate_video(
             zip_ref.extractall(temp_dir)
 
         # 2. Process Image Clips Native Generator
-        processed_clips = []
+        processed_clips =[]
         for index, item in enumerate(timeline_data):
             img_name = item["filename"]
             duration = float(item["duration"])
@@ -282,7 +285,25 @@ async def generate_video(
             audio_path = os.path.join(temp_dir, audio_file.filename)
             with open(audio_path, "wb") as buffer:
                 shutil.copyfileobj(audio_file.file, buffer)
-            
+
+            # --- NEW: Walkie-Talkie / Police Radio Effect ---
+            if audio_bandpass:
+                logger.info("Applying walkie-talkie/bandpass filter to audio via FFmpeg...")
+                filtered_audio_path = os.path.join(temp_dir, "filtered_audio.wav")
+                try:
+                    ffmpeg_exe = get_setting("FFMPEG_BINARY")
+                    subprocess.run([
+                        ffmpeg_exe, "-y", "-i", audio_path,
+                        # Highpass at 300hz, Lowpass at 3000hz, Volume boosted x2 to make up for cut frequencies
+                        "-af", "highpass=f=300,lowpass=f=3000,volume=2.0", 
+                        filtered_audio_path
+                    ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    audio_path = filtered_audio_path
+                    logger.info("Audio filter applied successfully.")
+                except Exception as e:
+                    logger.error(f"FFmpeg audio filter failed: {e}. Falling back to original audio.")
+            # ------------------------------------------------
+
             audio = AudioFileClip(audio_path)
             if audio.duration < total_duration:
                 audio = audio_loop(audio, duration=total_duration)
@@ -291,7 +312,7 @@ async def generate_video(
             
             final_clip = final_clip.set_audio(audio)
 
-        # 7. Render (Threads expanded to consume all 8 cores)
+        # 7. Render (Threads expanded to consume all cores)
         output_path = os.path.join(temp_dir, f"{filename}.mp4")
         logger.info(f"Rendering to {output_path}...")
         
